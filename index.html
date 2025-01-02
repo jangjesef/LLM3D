@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metamorfóza hmoty</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body { 
+            margin: 0;
+            background: #000000;
+            color: #ffffff;
+            font-family: 'Times New Roman', serif;
+            overflow: hidden;
+        }
+        canvas { 
+            display: block;
+        }
+        #interface {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 20px;
+            z-index: 100;
+        }
+        button {
+            background: none;
+            border: 1px solid white;
+            color: white;
+            padding: 10px 20px;
+            font-family: 'Times New Roman', serif;
+            cursor: pointer;
+            transition: all 0.3s;
+            letter-spacing: 0.1em;
+        }
+        button:hover {
+            background: white;
+            color: black;
+        }
+    </style>
+</head>
+<body>
+    <div id="interface">
+        <button onclick="changeShape()">ZMĚNIT TVAR</button>
+        <button onclick="changeColor()">ZMĚNIT BARVU</button>
+        <button onclick="toggleWireframe()">WIREFRAME</button>
+    </div>
+
+    <script>
+        let scene, camera, renderer, sculpture;
+        let wireframe = true;
+        let currentShape = 0;
+        let currentColor = 0;
+        
+        const colors = [
+            0xcccccc, // stříbrná
+            0x8b5cf6, // fialová
+            0xec4899, // růžová
+            0x3b82f6, // modrá
+            0x10b981  // tyrkysová
+        ];
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 5;
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setClearColor(0x000000);
+            document.body.appendChild(renderer.domElement);
+
+            createSculpture();
+            addLights();
+            animate();
+
+            window.addEventListener('resize', onWindowResize, false);
+        }
+
+        function createSculpture() {
+            if (sculpture) {
+                scene.remove(sculpture);
+            }
+            
+            sculpture = new THREE.Group();
+
+            // Základní forma
+            let geometry;
+            switch(currentShape) {
+                case 0:
+                    geometry = new THREE.TorusKnotGeometry(1, 0.3, 100, 16);
+                    break;
+                case 1:
+                    geometry = new THREE.TorusKnotGeometry(1, 0.3, 100, 16, 2, 5);
+                    break;
+                case 2:
+                    geometry = new THREE.TorusKnotGeometry(1, 0.3, 100, 16, 3, 4);
+                    break;
+                case 3:
+                    geometry = new THREE.IcosahedronGeometry(1, 1);
+                    break;
+                case 4:
+                    geometry = new THREE.OctahedronGeometry(1, 2);
+                    break;
+            }
+
+            const material = new THREE.MeshStandardMaterial({
+                color: colors[currentColor],
+                metalness: 0.8,
+                roughness: 0.2,
+                wireframe: wireframe
+            });
+            
+            const base = new THREE.Mesh(geometry, material);
+            sculpture.add(base);
+
+            // Částice
+            for(let i = 0; i < 50; i++) {
+                const particleGeo = new THREE.SphereGeometry(0.05, 8, 8);
+                const particleMat = new THREE.MeshStandardMaterial({
+                    color: colors[currentColor],
+                    emissive: 0x666666,
+                    metalness: 0.5,
+                    roughness: 0.5
+                });
+                const particle = new THREE.Mesh(particleGeo, particleMat);
+                
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.random() * Math.PI * 2;
+                const radius = 1.5;
+                
+                particle.position.x = radius * Math.sin(theta) * Math.cos(phi);
+                particle.position.y = radius * Math.sin(theta) * Math.sin(phi);
+                particle.position.z = radius * Math.cos(theta);
+                
+                sculpture.add(particle);
+            }
+
+            scene.add(sculpture);
+        }
+
+        function addLights() {
+            const ambientLight = new THREE.AmbientLight(0x333333);
+            scene.add(ambientLight);
+
+            const spotLight = new THREE.SpotLight(0xffffff, 1);
+            spotLight.position.set(5, 5, 5);
+            scene.add(spotLight);
+
+            const backLight = new THREE.PointLight(0x666666, 0.5);
+            backLight.position.set(-5, -5, -5);
+            scene.add(backLight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            sculpture.rotation.x += 0.001;
+            sculpture.rotation.y += 0.002;
+
+            // Animace částic
+            sculpture.children.forEach((child, index) => {
+                if (index > 0) {
+                    child.position.multiplyScalar(0.999 + Math.sin(Date.now() * 0.001 + index) * 0.001);
+                    child.scale.setScalar(0.8 + Math.sin(Date.now() * 0.002 + index) * 0.2);
+                }
+            });
+
+            renderer.render(scene, camera);
+        }
+
+        function changeShape() {
+            currentShape = (currentShape + 1) % 5;
+            createSculpture();
+        }
+
+        function changeColor() {
+            currentColor = (currentColor + 1) % colors.length;
+            sculpture.children.forEach(child => {
+                child.material.color.setHex(colors[currentColor]);
+            });
+        }
+
+        function toggleWireframe() {
+            wireframe = !wireframe;
+            sculpture.children[0].material.wireframe = wireframe;
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        init();
+    </script>
+</body>
+</html>
