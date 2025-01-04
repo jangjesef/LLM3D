@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metamorfóza hmoty</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body { 
+            margin: 0;
+            background: #000000;
+            color: #ffffff;
+            font-family: 'Times New Roman', serif;
+            overflow: hidden;
+        }
+        canvas { 
+            display: block;
+        }
+        #instructions {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: white;
+            font-size: 14px;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <div id="instructions">
+        <p>Použijte myš pro rotaci objektu.</p>
+        <p>Dvojklik pro změnu tvaru.</p>
+        <p>Podržení levého tlačítka myši pro změnu barvy.</p>
+        <p>Klávesy: F (wireframe), D (distorze), P (částice).</p>
+    </div>
+
+    <script>
+        let scene, camera, renderer, sculpture;
+        let wireframe = true;
+        let currentShape = 0;
+        let currentColor = 0;
+        let distortionEnabled = false;
+        let particlesVisible = true;
+        let clock = new THREE.Clock();
+        let isMouseDown = false;
+        let mouseX = 0, mouseY = 0;
+        let targetRotationX = 0, targetRotationY = 0;
+        
+        const colors = [
+            0xcccccc, // stříbrná
+            0x8b5cf6, // fialová
+            0xec4899, // růžová
+            0x3b82f6, // modrá
+            0x10b981, // tyrkysová
+            0xffd700  // zlatá
+        ];
+
+        const shapes = [
+            () => new THREE.TorusKnotGeometry(1, 0.3, 100, 16),
+            () => new THREE.TorusKnotGeometry(1, 0.3, 100, 16, 2, 5),
+            () => new THREE.TorusKnotGeometry(1, 0.3, 100, 16, 3, 4),
+            () => new THREE.IcosahedronGeometry(1, 2),
+            () => new THREE.OctahedronGeometry(1, 2),
+            () => {
+                const geo = new THREE.DodecahedronGeometry(1, 1);
+                geo.vertices = geo.vertices?.map(v => {
+                    v.x += (Math.random() - 0.5) * 0.2;
+                    v.y += (Math.random() - 0.5) * 0.2;
+                    v.z += (Math.random() - 0.5) * 0.2;
+                    return v;
+                });
+                return geo;
+            }
+        ];
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 5;
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setClearColor(0x000000);
+            renderer.shadowMap.enabled = true;
+            document.body.appendChild(renderer.domElement);
+
+            createSculpture();
+            addLights();
+            animate();
+
+            window.addEventListener('resize', onWindowResize, false);
+            document.addEventListener('mousedown', onMouseDown, false);
+            document.addEventListener('mouseup', onMouseUp, false);
+            document.addEventListener('mousemove', onMouseMove, false);
+            document.addEventListener('dblclick', onChangeShape, false);
+            document.addEventListener('keydown', onKeyDown, false);
+        }
+
+        function createSculpture() {
+            if (sculpture) {
+                scene.remove(sculpture);
+            }
+            
+            sculpture = new THREE.Group();
+
+            // Základní forma
+            const geometry = shapes[currentShape]();
+            const material = new THREE.MeshPhysicalMaterial({
+                color: colors[currentColor],
+                metalness: 0.8,
+                roughness: 0.2,
+                wireframe: wireframe,
+                clearcoat: 0.3,
+                clearcoatRoughness: 0.25
+            });
+            
+            const base = new THREE.Mesh(geometry, material);
+            base.castShadow = true;
+            base.receiveShadow = true;
+            sculpture.add(base);
+
+            if (particlesVisible) {
+                createParticles();
+            }
+
+            scene.add(sculpture);
+        }
+
+        function createParticles() {
+            const particlesCount = 100;
+            for(let i = 0; i < particlesCount; i++) {
+                const particleGeo = new THREE.SphereGeometry(0.03, 8, 8);
+                const particleMat = new THREE.MeshPhysicalMaterial({
+                    color: colors[currentColor],
+                    emissive: colors[currentColor],
+                    emissiveIntensity: 0.5,
+                    metalness: 0.8,
+                    roughness: 0.2,
+                    clearcoat: 1.0
+                });
+                const particle = new THREE.Mesh(particleGeo, particleMat);
+                
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.random() * Math.PI * 2;
+                const radius = 1.5 + Math.random() * 0.5;
+                
+                particle.position.x = radius * Math.sin(theta) * Math.cos(phi);
+                particle.position.y = radius * Math.sin(theta) * Math.sin(phi);
+                particle.position.z = radius * Math.cos(theta);
+                
+                particle.userData.originalPosition = particle.position.clone();
+                particle.userData.speed = Math.random() * 0.02 + 0.01;
+                
+                sculpture.add(particle);
+            }
+        }
+
+        function addLights() {
+            scene.add(new THREE.AmbientLight(0x333333));
+
+            const spotLight = new THREE.SpotLight(0xffffff, 1);
+            spotLight.position.set(5, 5, 5);
+            spotLight.castShadow = true;
+            scene.add(spotLight);
+
+            const backLight = new THREE.PointLight(0x666666, 0.5);
+            backLight.position.set(-5, -5, -5);
+            scene.add(backLight);
+
+            const rimLight = new THREE.DirectionalLight(0x666666, 0.3);
+            rimLight.position.set(0, 0, -5);
+            scene.add(rimLight);
+        }
+
+        function onMouseDown(event) {
+            isMouseDown = true;
+        }
+
+        function onMouseUp(event) {
+            isMouseDown = false;
+            if (event.button === 0) { // Levé tlačítko myši
+                changeColor();
+            }
+        }
+
+        function onMouseMove(event) {
+            if (isMouseDown) {
+                mouseX = (event.clientX - window.innerWidth / 2) / window.innerWidth;
+                mouseY = (event.clientY - window.innerHeight / 2) / window.innerHeight;
+                targetRotationX = mouseY * 0.5;
+                targetRotationY = mouseX * 0.5;
+            }
+        }
+
+        function onChangeShape() {
+            changeShape();
+        }
+
+        function onKeyDown(event) {
+            switch (event.key.toUpperCase()) {
+                case 'F': toggleWireframe(); break;
+                case 'D': toggleDistortion(); break;
+                case 'P': toggleParticles(); break;
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const time = clock.getElapsedTime();
+
+            // Plynulá rotace
+            sculpture.rotation.x += (targetRotationX - sculpture.rotation.x) * 0.1;
+            sculpture.rotation.y += (targetRotationY - sculpture.rotation.y) * 0.1;
+
+            // Animace základního tvaru
+            if (distortionEnabled && sculpture.children[0].geometry.vertices) {
+                sculpture.children[0].geometry.vertices.forEach((vertex, i) => {
+                    const wave = Math.sin(time * 2 + i) * 0.1;
+                    vertex.x += wave;
+                    vertex.y += wave;
+                    vertex.z += wave;
+                });
+                sculpture.children[0].geometry.verticesNeedUpdate = true;
+            }
+
+            // Animace částic
+            if (particlesVisible) {
+                sculpture.children.forEach((child, index) => {
+                    if (index > 0) {
+                        const originalPos = child.userData.originalPosition;
+                        const speed = child.userData.speed;
+                        
+                        child.position.x = originalPos.x + Math.sin(time * speed + index) * 0.3;
+                        child.position.y = originalPos.y + Math.cos(time * speed + index) * 0.3;
+                        child.position.z = originalPos.z + Math.sin(time * speed * 0.5 + index) * 0.3;
+                        
+                        child.scale.setScalar(0.8 + Math.sin(time * 2 + index) * 0.2);
+                    }
+                });
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        function changeShape() {
+            currentShape = (currentShape + 1) % shapes.length;
+            createSculpture();
+        }
+
+        function changeColor() {
+            currentColor = (currentColor + 1) % colors.length;
+            sculpture.children.forEach(child => {
+                child.material.color.setHex(colors[currentColor]);
+                if (child.material.emissive) {
+                    child.material.emissive.setHex(colors[currentColor]);
+                }
+            });
+        }
+
+        function toggleWireframe() {
+            wireframe = !wireframe;
+            sculpture.children[0].material.wireframe = wireframe;
+        }
+
+        function toggleDistortion() {
+            distortionEnabled = !distortionEnabled;
+        }
+
+        function toggleParticles() {
+            particlesVisible = !particlesVisible;
+            createSculpture();
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        init();
+    </script>
+</body>
+</html>
